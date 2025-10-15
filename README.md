@@ -6,7 +6,7 @@ Lixir is a simple LISP interpreter written in Elixir.
 
 To start the REPL, run:
 
-```elixir
+```
 elixir lixir.ex
 ```
 
