@@ -12,18 +12,23 @@ defmodule Lixir do
   end
 
   defp loop(env) do
-    input =
-      IO.gets("lixir> ")
-      |> to_string()
-      |> String.trim()
+    input = IO.gets("lixir> ")
 
-    {result_val, new_env} = execute_and_print(input, env)
+    # handle EOF (Ctrl+D or end of piped input)
+    if input == :eof do
+      IO.puts("\ngoodbye.")
+      :ok
+    else
+      input_str = input |> to_string() |> String.trim()
 
-    if result_val != :ok do
-      IO.inspect(result_val)
+      {result_val, new_env} = execute_and_print(input_str, env)
+
+      if result_val != :ok do
+        IO.inspect(result_val)
+      end
+
+      loop(new_env)
     end
-
-    loop(new_env)
   end
 
   defp execute_and_print("", env), do: {:ok, env}
@@ -35,7 +40,7 @@ defmodule Lixir do
       |> eval(env)
     rescue
       e ->
-        IO.puts("Error: #{e.message}")
+        IO.puts("Error: #{inspect(e)}")
         {:ok, env}
     end
   end
@@ -75,20 +80,26 @@ defmodule Lixir do
   end
 
   defp read_atom(token) do
-    case token do
-      token when is_integer(token) ->
-        case Integer.parse(token) do
-          {int, ""} -> int
-          _ -> String.to_atom(token)
-        end
+    cond do
+      # handle booleans first
+      token == "true" ->
+        true
 
-      token when is_float(token) ->
-        case Float.parse(token) do
-          {float, ""} -> float
-          _ -> String.to_atom(token)
-        end
+      token == "false" ->
+        false
 
-      _ ->
+      # then try to parse as integer
+      match?({_, ""}, Integer.parse(token)) ->
+        {int, ""} = Integer.parse(token)
+        int
+
+      # then try to parse as float
+      match?({_, ""}, Float.parse(token)) ->
+        {float, ""} = Float.parse(token)
+        float
+
+      # otherwise is a symbol
+      true ->
         String.to_atom(token)
     end
   end
@@ -101,10 +112,12 @@ defmodule Lixir do
   def bin_op(:-, a, b), do: a - b
   def bin_op(:*, a, b), do: a * b
   def bin_op(:/, a, b), do: a / b
+  def bin_op(:==, a, b), do: a == b
 
   def eval(expression, env) when is_number(expression), do: {expression, env}
+  def eval(expression, env) when is_boolean(expression), do: {expression, env}
 
-  def eval([op, a, b], env) when op in [:+, :-, :*, :/] do
+  def eval([op, a, b], env) when op in [:+, :-, :*, :/, :==] do
     {val_a, _} = eval(a, env)
     {val_b, _} = eval(b, env)
     {bin_op(op, val_a, val_b), env}
@@ -136,19 +149,11 @@ defmodule Lixir do
     eval(body, final_env)
   end
 
-  # def eval([%Closure{params: params, body: body, env: closure_env} | args], env) do
-  #   {all_evaluated_args, _final_arg_env} =
-  #     args
-  #     |> Enum.reduce({[], env}, fn {arg, {evaluated_args, arg_env}} ->
-  #       {evaluated_arg, new_arg_env} = eval(arg, arg_env)
-  #       {[evaluated_arg | evaluated_args], new_arg_env}
-  #     end)
+  def eval([:if, cond, e1, e2], env) do
+    {cond_val, new_env} = eval(cond, env)
 
-  #   local_env = Enum.zip(params, all_evaluated_args) |> Enum.into(%{})
-  #   final_env = Map.merge(closure_env, local_env)
-
-  #   eval(body, final_env)
-  # end
+    if(cond_val, do: e1, else: e2) |> eval(new_env)
+  end
 end
 
 Lixir.repl()
